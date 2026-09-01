@@ -9,7 +9,13 @@ def scaled_dot_product_attention_simple(
     scale: float | None = None,
     mask: mx.array | None = None,
 ) -> mx.array:
-    d = query.shape[-1]
+    '''
+    tensor shape: N.. * L * D
+    N = batch
+    L = sequence length
+    D = head dimensions
+    '''
+    d = query.shape[-1] # attention head dimensions
     if scale is None:
         scale = 1/mx.sqrt(d)
 
@@ -32,7 +38,22 @@ class SimpleMultiHeadAttention:
         wv: mx.array,
         wo: mx.array,
     ):
-        pass
+        '''
+        input tensor shape = N * L * E = N * L * H * D
+        N = batch
+        H = # of attention heads
+        L = sequence length
+        D = head dimension
+
+        E = H * D = embed dimensions
+        '''
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.head_dimensions = hidden_size // num_heads
+        self.wq = wq # E * E = (H * D) * E
+        self.wk = wk
+        self.wv = wv
+        self.wo = wo # E * E = E * (H X D)
 
     def __call__(
         self,
@@ -41,7 +62,37 @@ class SimpleMultiHeadAttention:
         value: mx.array,
         mask: mx.array | None = None,
     ) -> mx.array:
-        pass
+        # N * L * E
+        query_result = query @ self.wq.T
+        key_result = key @ self.wk.T
+        value_result = value @ self.wv.T
+
+        # note: more intuitively we could reshape q,k,v into shape N * H * D * E and then N * H * E * D
+        # as the different heads and then we use to multiply to result in N * H * L * D
+
+        # N * L * H * D
+        query_result = mx.reshape(query_result, (query_result.shape[0], query_result.shape[1], self.num_heads, self.head_dimensions))
+        key_result = mx.reshape(key_result, (key_result.shape[0], key_result.shape[1], self.num_heads, self.head_dimensions))
+        value_result = mx.reshape(value_result, (value_result.shape[0], value_result.shape[1], self.num_heads, self.head_dimensions))
+
+        # N * H * L * D
+        query_t = mx.swapaxes(query_result, 1, 2)
+        key_t = mx.swapaxes(key_result, 1, 2)
+        value_t = mx.swapaxes(value_result, 1, 2)
+
+        # N * H * L * D
+        attention = scaled_dot_product_attention_simple(query_t, key_t, value_t, None, mask)
+
+        # N * L * H * D
+        attention_t = mx.swapaxes(attention, 1, 2)
+
+        # N * L * E
+        attention_t = mx.reshape(attention_t, (attention_t.shape[0], attention_t.shape[1], self.hidden_size))
+
+        # N * L * E
+        return linear(attention_t, self.wo)
+
+
 
 
 def causal_mask(L: int, S: int, dtype: mx.Dtype) -> mx.array:

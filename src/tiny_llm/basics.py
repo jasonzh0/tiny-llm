@@ -12,7 +12,16 @@ def linear(
     w: mx.array,
     bias: mx.array | None = None,
 ) -> mx.array:
-    pass
+    '''
+    input tensor shape: N.. * I
+    weight tensor shape: O * I
+    biases tensor shape: O * I
+    output tensor shape: N.. * O
+    '''
+    value = x @ w.T
+    if bias is not None:
+        value = value + bias
+    return value
 
 
 def silu(x: mx.array) -> mx.array:
