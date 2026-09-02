@@ -108,7 +108,52 @@ def scaled_dot_product_attention_grouped(
     scale: float | None = None,
     mask: mx.array | str | None = None,
 ) -> mx.array:
-    pass
+    '''
+    H_q // H (divisible)
+    H_q = number of query heads
+    H = number of grouped heads (key / value heads)
+    L = query sequence length
+    S = key/value sequence length (supports being different from L)
+    D = head dimension
+    '''
+    *N, H_q, L, D = query.shape
+    *N, H, S, D = key.shape
+
+    # groups
+    G = H_q // H
+
+    if scale is None:
+        scale = 1/mx.sqrt(D)
+
+    # N * H * G * L * D
+    query = mx.reshape(query, (*N, H, G, L, D))
+
+    # N * H * 1 * S * D
+    key = key[..., None, :, :]
+    value = value[..., None, :, :]
+
+    # N * H * 1 * D * S
+    key = mx.swapaxes(key, -2, -1)
+
+    # N * H * G * D * S
+    key_view = mx.broadcast_to(key, (*N, H, G, D, S))
+    value_view = mx.broadcast_to(value, (*N, H, G, S, D))
+
+    # N * H * G * L * S
+    attend_score = (query @ key_view) * scale
+
+    if mask is not None:
+        mask = mx.reshape(mask, (*N, H, G, L, S))
+        attend_score = attend_score + mask
+    
+    # N * H * G * L * D
+    attention = softmax(attend_score, axis = -1) @ value_view
+
+    # N * H_q * L * D
+    attention = mx.reshape(attention, (*N, H_q, L, D))
+
+    return attention
+
 
 
 def paged_attention(
