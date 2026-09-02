@@ -182,7 +182,16 @@ class Qwen3TransformerBlock:
         x: mx.array,
         mask: mx.array | str | None = None,
     ) -> mx.array:
-        pass
+        x1 = x
+        x1 = RMSNorm(self.hidden_size, self.w_input_layernorm, self.rms_norm_eps)(x)
+        x1 = Qwen3MultiHeadAttention(self.hidden_size, self.num_attention_heads, self.num_kv_heads, self.head_dim, self.wq, self.wk, self.wv, self.wo, self.q_norm, self.k_norm, self.max_seq_len, self.theta, self.rms_norm_eps)(x1, mask)
+        x2 = x1 + x
+
+        x3 = x2
+        x3 = RMSNorm(self.hidden_size, self.w_post_attention_layernorm, self.rms_norm_eps)(x3)
+        x3 = Qwen3MLP(self.head_dim, self.hidden_size, self.w_gate, self.w_up, self.w_down)(x3)
+        x4 = x2 + x3
+        return x4
 
 
 class Qwen3ModelWeek1:
