@@ -99,10 +99,39 @@ class Qwen3MLP:
         w_up: mx.array,
         w_down: mx.array,
     ):
-        pass
+        self.dim = dim
+        self.hidden_dim = hidden_dim
+        self.w_gate = w_gate
+        self.w_up = w_up
+        self.w_down = w_down
 
     def __call__(self, x: mx.array) -> mx.array:
-        pass
+        '''
+        E is the hidden size
+        I is the intermediate dimension size
+        L is the sequence length
+
+        x:  N.. * L * E
+        w_gate: I * E
+        w_up: I * E
+        w_down: E * I
+        output: N.. * L * E
+        '''
+
+        # N.. * L * I
+        gate = silu(x @ mx.swapaxes(self.w_gate, -1, -2))
+
+        # N.. * L * I
+        value = x @ mx.swapaxes(self.w_up, -1, -2)
+
+        # N.. * L * I
+        activation = mx.multiply(gate, value)
+
+        # N.. * L * E
+        down = activation @ mx.swapaxes(self.w_down, -1, -2)
+
+        return down
+
 
 
 class Qwen3TransformerBlock:
@@ -128,7 +157,25 @@ class Qwen3TransformerBlock:
         max_seq_len: int = 32768,
         theta: int = 1000000,
     ):
-        pass
+        self.num_attention_heads = num_attention_heads
+        self.num_kv_heads = num_kv_heads
+        self.hidden_size = hidden_size
+        self.head_dim = head_dim
+        self.intermediate_size = intermediate_size
+        self.rms_norm_eps = rms_norm_eps
+        self.wq = wq
+        self.wk = wk
+        self.wv = wv
+        self.wo = wo
+        self.q_norm = q_norm
+        self.k_norm = k_norm
+        self.w_gate = w_gate
+        self.w_up = w_up
+        self.w_down = w_down
+        self.w_input_layernorm = w_input_layernorm
+        self.w_post_attention_layernorm = w_post_attention_layernorm
+        self.max_seq_len = max_seq_len
+        self.theta = theta
 
     def __call__(
         self,

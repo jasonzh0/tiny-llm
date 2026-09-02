@@ -25,4 +25,8 @@ def linear(
 
 
 def silu(x: mx.array) -> mx.array:
-    pass
+    z = mx.exp(-abs(x))
+    z = mx.where(x < 0, z/(1+z), 1/(1+z))
+    z = x * z
+    return z
+    
