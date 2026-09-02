@@ -98,7 +98,8 @@ class SimpleMultiHeadAttention:
 
 
 def causal_mask(L: int, S: int, dtype: mx.Dtype) -> mx.array:
-    pass
+    mask = mx.ones((L, S)) * -mx.inf 
+    return mx.triu(mask, k = S - L + 1).astype(dtype)
 
 
 def scaled_dot_product_attention_grouped(
@@ -143,7 +144,10 @@ def scaled_dot_product_attention_grouped(
     attend_score = (query @ key_view) * scale
 
     if mask is not None:
-        mask = mx.reshape(mask, (*N, H, G, L, S))
+        if isinstance(mask, str) and mask == 'causal':
+            mask = causal_mask(L, S, dtype=mx.float16)[..., None, None, :, :]
+        else:
+            mask = mx.reshape(mask, (*N, H, G, L, S))
         attend_score = attend_score + mask
     
     # N * H * G * L * D
