@@ -14,7 +14,7 @@ class RoPE:
         self.traditional = traditional
 
         dim_index = mx.arange(dims//2)
-        self.theta = 1 / (10000 ** (2 * dim_index / dims))
+        self.theta = 1 / (base ** (2 * dim_index / dims))
 
     def __call__(
         self, x: mx.array, offset: list[slice] | slice | None = None
@@ -42,19 +42,30 @@ class RoPE:
         cos_freqs = mx.cos(positions @ thetas)[None, :, None, :]
         sin_freqs = mx.sin(positions @ thetas)[None, :, None, :]
 
-        # N * L * H * D//2 * 2
-        x = mx.reshape(x, (N, L, H, D // 2, 2))
+
+        if self.traditional:
+            # N * L * H * D//2 * 2
+            x = mx.reshape(x, (N, L, H, D // 2, 2))
+
+            # N * L * H * D//2
+            x1 = x[..., 0]
+            x2 = x[..., 1]
+
+        else:
+            # N * L * H * D//2
+            x1 = x[..., :D//2]
+            x2 = x[..., D//2:]
 
         # N * L * H * D//2
-        x_evens = x[..., 0]
-        x_odds = x[..., 1]
+        x1_rotated = x1 * cos_freqs - x2 * sin_freqs
+        x2_rotated = x1 * sin_freqs + x2 * cos_freqs
 
-        # N * L * H * D//2
-        evens = x_evens * cos_freqs - x_odds * sin_freqs
-        odds = x_evens * sin_freqs + x_odds * cos_freqs
+        if self.traditional:
+            x = mx.stack([x1_rotated, x2_rotated], axis = -1)
+        else:
+            x = mx.concat([x1_rotated, x2_rotated], axis = -1)
 
         # N * L * H * D//2 * 2
-        x = mx.stack([evens, odds], axis = -1)
         # N * L * H * D
         x = mx.reshape(x, (N, L, H, D))
 
