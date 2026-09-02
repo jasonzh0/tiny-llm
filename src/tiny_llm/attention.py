@@ -63,6 +63,8 @@ class SimpleMultiHeadAttention:
         mask: mx.array | None = None,
     ) -> mx.array:
         # N * L * E
+        N, L, E = query.shape
+
         query_result = query @ self.wq.T
         key_result = key @ self.wk.T
         value_result = value @ self.wv.T
@@ -71,9 +73,9 @@ class SimpleMultiHeadAttention:
         # as the different heads and then we use to multiply to result in N * H * L * D
 
         # N * L * H * D
-        query_result = mx.reshape(query_result, (query_result.shape[0], query_result.shape[1], self.num_heads, self.head_dimensions))
-        key_result = mx.reshape(key_result, (key_result.shape[0], key_result.shape[1], self.num_heads, self.head_dimensions))
-        value_result = mx.reshape(value_result, (value_result.shape[0], value_result.shape[1], self.num_heads, self.head_dimensions))
+        query_result = mx.reshape(query_result, (N, L, self.num_heads, self.head_dimensions))
+        key_result = mx.reshape(key_result, (N, L, self.num_heads, self.head_dimensions))
+        value_result = mx.reshape(value_result, (N, L, self.num_heads, self.head_dimensions))
 
         # N * H * L * D
         query_t = mx.swapaxes(query_result, 1, 2)
@@ -87,7 +89,7 @@ class SimpleMultiHeadAttention:
         attention_t = mx.swapaxes(attention, 1, 2)
 
         # N * L * E
-        attention_t = mx.reshape(attention_t, (attention_t.shape[0], attention_t.shape[1], self.hidden_size))
+        attention_t = mx.reshape(attention_t, (N, L, E))
 
         # N * L * E
         return linear(attention_t, self.wo)
