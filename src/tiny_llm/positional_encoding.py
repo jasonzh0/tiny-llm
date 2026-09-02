@@ -23,7 +23,7 @@ class RoPE:
         input size x = N * L * H * D
         cos/sin frequencies = (MAX_SEQ_LEN, D // 2)
         '''
-        N, L, H, D = x.shape
+        *N, L, H, D = x.shape
 
         if offset is None:
             start = 0
@@ -38,14 +38,14 @@ class RoPE:
         # 1 x D // 2
         thetas = self.theta[None, :]
 
-        # 1 * L * 1 * D // 2
-        cos_freqs = mx.cos(positions @ thetas)[None, :, None, :]
-        sin_freqs = mx.sin(positions @ thetas)[None, :, None, :]
+        # L * 1 * D // 2  (broadcasts from the right against N.. * L * H * D//2)
+        cos_freqs = mx.cos(positions @ thetas)[:, None, :]
+        sin_freqs = mx.sin(positions @ thetas)[:, None, :]
 
 
         if self.traditional:
             # N * L * H * D//2 * 2
-            x = mx.reshape(x, (N, L, H, D // 2, 2))
+            x = mx.reshape(x, (*N, L, H, D // 2, 2))
 
             # N * L * H * D//2
             x1 = x[..., 0]
@@ -67,6 +67,6 @@ class RoPE:
 
         # N * L * H * D//2 * 2
         # N * L * H * D
-        x = mx.reshape(x, (N, L, H, D))
+        x = mx.reshape(x, (*N, L, H, D))
 
         return x
