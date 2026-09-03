@@ -178,3 +178,6 @@ cython_debug/
 
 *.dylib
 *.metallib
+
+# generated mlx type stubs for Pylance
+typings/

@@ -19,7 +19,40 @@ def simple_generate(
     sampler: Callable[[mx.array], mx.array] | None,
 ) -> None:
     def _step(model, y):
-        pass
+        # 1, S
+        y = y[None, :]
+
+        # 1, S, vocab_size
+        y = model(y)
+
+        # (1, vocab_size)
+        logits = y[:, -1, :]
+
+        # (1, vocab_size)
+        log_probs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+
+        if sampler is None:
+            return mx.argmax(log_probs, axis = -1)
+        else:
+            return sampler(log_probs)
+    
+    x = mx.array(tokenizer.encode(prompt, add_special_tokens=False))
+
+    detokenizer = tokenizer.detokenizer
+    detokenizer.reset()
+
+    while len(detokenizer.tokens) < 256:
+        next_token = _step(model, x)
+        x = mx.concat([x, next_token])
+        detokenizer.add_token(next_token.item())
+        
+        if detokenizer.tokens[-1] == tokenizer.eos_token_id:
+            break
+
+        print(detokenizer.last_segment, end="", flush=True)
+
+    detokenizer.finalize()
+    print()
 
 
 def simple_generate_with_kv_cache(
