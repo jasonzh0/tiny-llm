@@ -235,17 +235,17 @@ class Qwen3ModelWeek1:
         self,
         inputs: mx.array,
     ) -> mx.array:
-        # N * hidden_size
+        # B * L * E
         x = self.embedding(inputs)
 
-        # N * hidden_size
+        # B * L * E
         for i in range(len(self.layers_inner)):
             x = self.layers_inner[i](x, 'causal')
 
-        # N * hidden_size
+        # B * L * E
         x = self.rms_norm(x)
 
-        # N * vocab_size
+        # B * L * vocab_size
         if self.mlx_model.args.tie_word_embeddings:
             x = self.embedding.as_linear(x)
         else:

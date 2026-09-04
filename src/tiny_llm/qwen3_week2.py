@@ -334,8 +334,7 @@ class Qwen3ModelWeek2:
         )
 
     def create_kv_cache(self) -> list[TinyKvCache]:
-        return [TinyKvFullCache() for layer in self.layers_inner]
-            
+        return [TinyKvFullCache() for _ in range(len(self.layers_inner))]
 
 
     def __call__(
@@ -345,20 +344,29 @@ class Qwen3ModelWeek2:
         cache: list[TinyKvCache],
         logits_to_keep: int | None = None,
     ) -> mx.array:
-        # N * hidden_size
+        for i, layer_cache in enumerate(cache):
+            if layer_cache.offset != offset:
+                raise ValueError(
+                    f"cache offset {layer_cache.offset} for layer {i} "
+                    f"does not match model offset {offset}"
+                )
+
+        # B * L * E
         x = self.embedding(inputs)
         
-        # N * hidden_size
+        # B * L * E
         for i in range(len(self.layers_inner)):
             x = self.layers_inner[i](x, offset, cache[i], 'causal')
 
-        # TODO (Day 1): honour logits_to_keep so decode only projects the last
-        # row through the vocab-sized lm_head.
 
-        # N * hidden_size
+        # B * 1 * E
+        if logits_to_keep is not None:
+            x = x[:, -logits_to_keep:, :]
+
+        # B * L * E
         x = self.rms_norm(x)
 
-        # N * vocab_size
+        # B * L * vocab_size
         if self.mlx_model.args.tie_word_embeddings:
             x = self.embedding.as_linear(x)
         else:
