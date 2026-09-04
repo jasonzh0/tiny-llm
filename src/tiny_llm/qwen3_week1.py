@@ -39,6 +39,10 @@ class Qwen3MultiHeadAttention:
         self.theta = theta
         self.rms_norm_eps = rms_norm_eps
 
+        self.q_norm_op = RMSNorm(head_dim, q_norm, eps=rms_norm_eps)
+        self.k_norm_op = RMSNorm(head_dim, k_norm, eps=rms_norm_eps)
+        self.rope = RoPE(head_dim, max_seq_len, theta, False)
+
     def __call__(
         self,
         x: mx.array,
@@ -59,11 +63,11 @@ class Qwen3MultiHeadAttention:
         v = mx.reshape(v, (B, L, self.num_kv_heads, self.head_dim))
         k = mx.reshape(k, (B, L, self.num_kv_heads, self.head_dim))
 
-        q = RMSNorm(self.head_dim, self.q_norm, eps=self.rms_norm_eps)(q)
-        k = RMSNorm(self.head_dim, self.k_norm, eps=self.rms_norm_eps)(k)
+        q = self.q_norm_op(q)
+        k = self.k_norm_op(k)
 
-        q = RoPE(self.head_dim, L, self.theta, False)(q, offset=slice(0, L))
-        k = RoPE(self.head_dim, L, self.theta, False)(k, offset=slice(0, L))
+        q = self.rope(q, offset=slice(0, L))
+        k = self.rope(k, offset=slice(0, L))
 
         # B * H_q * L * D
         q = mx.swapaxes(q, -2, -3)
@@ -177,19 +181,22 @@ class Qwen3TransformerBlock:
         self.max_seq_len = max_seq_len
         self.theta = theta
 
+        self.input_layernorm = RMSNorm(hidden_size, w_input_layernorm, rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(hidden_size, w_post_attention_layernorm, rms_norm_eps)
+        self.attention = Qwen3MultiHeadAttention(hidden_size, num_attention_heads, num_kv_heads, head_dim, wq, wk, wv, wo, q_norm, k_norm, max_seq_len, theta, rms_norm_eps)
+        self.mlp = Qwen3MLP(hidden_size, intermediate_size, w_gate, w_up, w_down)
+
     def __call__(
         self,
         x: mx.array,
         mask: mx.array | str | None = None,
     ) -> mx.array:
-        x1 = x
-        x1 = RMSNorm(self.hidden_size, self.w_input_layernorm, self.rms_norm_eps)(x)
-        x1 = Qwen3MultiHeadAttention(self.hidden_size, self.num_attention_heads, self.num_kv_heads, self.head_dim, self.wq, self.wk, self.wv, self.wo, self.q_norm, self.k_norm, self.max_seq_len, self.theta, self.rms_norm_eps)(x1, mask)
+        x1 = self.input_layernorm(x)
+        x1 = self.attention(x1, mask)
         x2 = x1 + x
 
-        x3 = x2
-        x3 = RMSNorm(self.hidden_size, self.w_post_attention_layernorm, self.rms_norm_eps)(x3)
-        x3 = Qwen3MLP(self.hidden_size, self.intermediate_size, self.w_gate, self.w_up, self.w_down)(x3)
+        x3 = self.post_attention_layernorm(x2)
+        x3 = self.mlp(x3)
         x4 = x2 + x3
         return x4
 
