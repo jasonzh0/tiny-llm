@@ -39,8 +39,8 @@ class RoPE:
         thetas = self.theta[None, :]
 
         # L * 1 * D // 2  (broadcasts from the right against N.. * L * H * D//2)
-        cos_freqs = mx.cos(positions @ thetas)[:, None, :]
-        sin_freqs = mx.sin(positions @ thetas)[:, None, :]
+        cos_freqs = mx.cos(positions @ thetas)[:, None, :].astype(x.dtype)
+        sin_freqs = mx.sin(positions @ thetas)[:, None, :].astype(x.dtype)
 
 
         if self.traditional:

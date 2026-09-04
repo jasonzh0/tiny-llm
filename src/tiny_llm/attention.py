@@ -145,7 +145,7 @@ def scaled_dot_product_attention_grouped(
 
     if mask is not None:
         if isinstance(mask, str) and mask == 'causal':
-            mask = causal_mask(L, S, dtype=mx.float32)[..., None, None, :, :]
+            mask = causal_mask(L, S, dtype=attend_score.dtype)[..., None, None, :, :]
         else:
             mask = mx.reshape(mask, (*N, H, G, L, S))
         attend_score = attend_score + mask

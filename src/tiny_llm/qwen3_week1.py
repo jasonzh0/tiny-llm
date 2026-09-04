@@ -183,7 +183,7 @@ class Qwen3TransformerBlock:
 
         self.input_layernorm = RMSNorm(hidden_size, w_input_layernorm, rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(hidden_size, w_post_attention_layernorm, rms_norm_eps)
-        self.attention = Qwen3MultiHeadAttention(hidden_size, num_attention_heads, num_kv_heads, head_dim, wq, wk, wv, wo, q_norm, k_norm, max_seq_len, theta, rms_norm_eps)
+        self.self_attn = Qwen3MultiHeadAttention(hidden_size, num_attention_heads, num_kv_heads, head_dim, wq, wk, wv, wo, q_norm, k_norm, max_seq_len, theta, rms_norm_eps)
         self.mlp = Qwen3MLP(hidden_size, intermediate_size, w_gate, w_up, w_down)
 
     def __call__(
@@ -192,7 +192,7 @@ class Qwen3TransformerBlock:
         mask: mx.array | str | None = None,
     ) -> mx.array:
         x1 = self.input_layernorm(x)
-        x1 = self.attention(x1, mask)
+        x1 = self.self_attn(x1, mask)
         x2 = x1 + x
 
         x3 = self.post_attention_layernorm(x2)
@@ -205,7 +205,7 @@ class Qwen3ModelWeek1:
     def __init__(self, mlx_model: Any):
         self.mlx_model = mlx_model
         self.embedding = Embedding(mlx_model.args.vocab_size, mlx_model.args.hidden_size, dequantize_linear(mlx_model.model.embed_tokens).astype(mx.bfloat16))
-        self.layers = [
+        self.layers_inner = [
             Qwen3TransformerBlock(
                 num_attention_heads=mlx_model.args.num_attention_heads,
                 num_kv_heads=mlx_model.args.num_key_value_heads,
@@ -227,7 +227,7 @@ class Qwen3ModelWeek1:
                 max_seq_len=mlx_model.args.max_position_embeddings,
                 theta=mlx_model.args.rope_theta,
             )
-            for layer in mlx_model.layers
+            for layer in mlx_model.model.layers
         ]
         self.rms_norm = RMSNorm(mlx_model.args.hidden_size, mlx_model.model.norm.weight, mlx_model.args.rms_norm_eps)
 
@@ -239,8 +239,8 @@ class Qwen3ModelWeek1:
         x = self.embedding(inputs)
 
         # N * hidden_size
-        for i in range(len(self.layers)):
-            x = self.layers[i](x, 'causal')
+        for i in range(len(self.layers_inner)):
+            x = self.layers_inner[i](x, 'causal')
 
         # N * hidden_size
         x = self.rms_norm(x)

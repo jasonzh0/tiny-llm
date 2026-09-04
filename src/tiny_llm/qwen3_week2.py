@@ -104,10 +104,8 @@ class Qwen3MultiHeadAttention:
         q = self.q_norm_op(q)
         k = self.k_norm_op(k)
 
-        # TODO (Day 1): rotate at the absolute position of the incoming tokens,
-        # i.e. slice(offsets, offsets + L) instead of slice(0, L).
-        q = self.rope(q, offset=slice(0, L))
-        k = self.rope(k, offset=slice(0, L))
+        q = self.rope(q, offset=slice(offsets, offsets + L))
+        k = self.rope(k, offset=slice(offsets, offsets + L))
 
         # B * H_q * L * D
         q = mx.swapaxes(q, -2, -3)
@@ -116,10 +114,9 @@ class Qwen3MultiHeadAttention:
         k = mx.swapaxes(k, -2, -3)
         v = mx.swapaxes(v, -2, -3)
 
-        # TODO (Day 1): append the new k/v to the cache and fetch the full
-        # prefix back, e.g.
-        #   k, v, offsets, mask = cache.update_and_fetch(k, v, None, mask)
-        # after which k/v are B * H * S * D while q stays B * H_q * L * D.
+        # q: B * H_q * L * D
+        # k/v: B * H * S * D
+        k, v, seq_len, mask = cache.update_and_fetch(k, v, None, mask)
 
         # query.shape = B * H_q * L * D
         # key.shape = B * H * S * D
@@ -226,7 +223,7 @@ class Qwen3TransformerBlock:
         self.post_attention_layernorm = RMSNorm(
             hidden_size, w_post_attention_layernorm, rms_norm_eps
         )
-        self.attention = Qwen3MultiHeadAttention(
+        self.self_attn = Qwen3MultiHeadAttention(
             hidden_size,
             num_attention_heads,
             num_kv_heads,
@@ -264,7 +261,7 @@ class Qwen3TransformerBlock:
         mask: mx.array | str | None = None,
     ) -> mx.array:
         x1 = self.input_layernorm(x)
-        x1 = self.attention(x1, offset, cache, mask)
+        x1 = self.self_attn(x1, offset, cache, mask)
         x2 = x1 + x
 
         x3 = self.post_attention_layernorm(x2)
@@ -300,7 +297,7 @@ class Qwen3ModelWeek2:
             mlx_model.args.hidden_size,
             dequantize_linear(mlx_model.model.embed_tokens).astype(mx.bfloat16),
         )
-        self.layers = [
+        self.layers_inner = [
             Qwen3TransformerBlock(
                 num_attention_heads=mlx_model.args.num_attention_heads,
                 num_kv_heads=mlx_model.args.num_key_value_heads,
@@ -328,7 +325,7 @@ class Qwen3ModelWeek2:
                 use_fast_swiglu=use_fast_swiglu,
                 use_decode_attention=use_decode_attention,
             )
-            for layer in mlx_model.layers
+            for layer in mlx_model.model.layers
         ]
         self.rms_norm = RMSNorm(
             mlx_model.args.hidden_size,
@@ -337,8 +334,9 @@ class Qwen3ModelWeek2:
         )
 
     def create_kv_cache(self) -> list[TinyKvCache]:
-        # TODO (Day 1, Task 3): one request-scoped cache handle per layer.
-        pass
+        return [TinyKvFullCache() for layer in self.layers_inner]
+            
+
 
     def __call__(
         self,
@@ -349,12 +347,10 @@ class Qwen3ModelWeek2:
     ) -> mx.array:
         # N * hidden_size
         x = self.embedding(inputs)
-
-        # TODO (Day 1, Task 2): pass each layer its own cache handle plus the
-        # caller's offset.
+        
         # N * hidden_size
-        for i in range(len(self.layers)):
-            x = self.layers[i](x, 'causal')
+        for i in range(len(self.layers_inner)):
+            x = self.layers_inner[i](x, offset, cache[i], 'causal')
 
         # TODO (Day 1): honour logits_to_keep so decode only projects the last
         # row through the vocab-sized lm_head.
