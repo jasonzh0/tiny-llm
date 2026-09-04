@@ -189,7 +189,7 @@ class Qwen3TransformerBlock:
 
         x3 = x2
         x3 = RMSNorm(self.hidden_size, self.w_post_attention_layernorm, self.rms_norm_eps)(x3)
-        x3 = Qwen3MLP(self.head_dim, self.hidden_size, self.w_gate, self.w_up, self.w_down)(x3)
+        x3 = Qwen3MLP(self.hidden_size, self.intermediate_size, self.w_gate, self.w_up, self.w_down)(x3)
         x4 = x2 + x3
         return x4
 
